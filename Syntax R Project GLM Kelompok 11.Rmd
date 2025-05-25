@@ -1,0 +1,951 @@
+SYNTAX R - FINAL PROJECT
+MODEL LINEAR TERGENERALISASI
+KELOMPOK 11
+
+#####################################################################
+###
+
+```{r}
+library(haven)
+library(tidyverse)
+library(ggplot2)
+library(MASS)
+library(dplyr)
+library(AER)
+```
+
+```{r}
+#menyiapkan data
+fktp <- read_dta("D:/DEPOSITORYs/Semester 3/MLT/PROJECT/2019202002_fktpkapitasi.dta")
+peserta <- read_dta("D:/DEPOSITORYs/Semester 3/MLT/PROJECT/2015202001_kepesertaan.dta")
+nonkapitasi <- read_dta("D:/DEPOSITORYs/Semester 3/MLT/PROJECT/2019202004_nonkapitasi.dta")
+fkrtl <- read_dta("D:/DEPOSITORYs/Semester 3/MLT/PROJECT/2019202003_fkrtl.dta")
+diagnosis <- read_dta("D:/DEPOSITORYs/Semester 3/MLT/PROJECT/2019202005_diagnosissekunder.dta")
+```
+
+```{r}
+#filter pasien dengan penyakit ginjal
+fktp.filtered <- subset(fktp, fktp$FKP14A %in% c("N17","N18","N19"))
+diag <- subset(diagnosis, diagnosis$FKL24A %in% c("N17","N18","N19"))
+fkrtl.filtered <- subset(fkrtl, fkrtl$FKL17A %in% c("N17","N18","N19"))
+nonkap.filtered <- subset(nonkapitasi, nonkapitasi$PNK13A %in% c("N17","N18","N19"))
+```
+
+
+```{r}
+#kepesertaan
+peserta.filter <- peserta[c(1,2,3,5,17,18)]
+#fktp
+fktp.filter <- fktp.filtered[c(1,4,5,16,17,18)]
+#fktrl
+fkrtl.filter <- fkrtl.filtered[c(1,4,5,6,12,22,23,24,25)]
+#nonkaputasi
+nonkap.filter <- nonkap.filtered[c(1,4,5,6,12,16,17,18)]
+```
+
+
+```{r}
+peserta.filter
+fktp.filter
+fkrtl.filter
+nonkap.filter
+```
+
+```{r}
+#join data peserta, fktp, dan nonkaputasi
+join4 <- right_join(fktp.filter,fkrtl.filter, by = "FKP02", multiple = "all")
+join4 <- join4[-1]
+names(join4)[names(join4) == "PSTV01.y"] <- "PSTV01"
+data_kapitasi <- inner_join(peserta.filter, join4, by = "PSTV01", multiple = "all")
+
+##membuatdata non kapitasi
+join3 <- inner_join(peserta.filter, nonkap.filter, by = "PSTV01", multiple = "all")
+names(join3)[names(join3) == "PSTV02.x"] <- "PSTV02"
+data_nonkapitasi <- join3[-7]
+```
+
+```{r}
+#variabel frekuensi 
+#menggabungkan data untuk variabel frekuensi kunjungan
+result1 <- data_kapitasi %>% group_by(Peserta = data_kapitasi$PSTV01) %>% summarise(Frekuensi = n())
+result2 <- data_nonkapitasi %>% group_by(Peserta = data_nonkapitasi$PSTV01) %>% summarise(Frekuensi = n())
+
+frekuensi <- rbind(result1, result2)
+summary(frekuensi)
+
+frek <- frekuensi %>%
+  group_by(Peserta) %>%
+  summarize(Frekuensi = sum(Frekuensi))
+summary(frek)
+```
+
+```{r}
+#variabel umur
+#umur peserta kapitasi
+tanggal_kunjungan = Date()
+for (i in 1:nrow(data_kapitasi)) {
+  if (is.na(data_kapitasi$FKL03[i])) {
+    tanggal_kunjungan[i] <- as.Date(data_kapitasi$FKP03[i])
+  } else {
+    tanggal_kunjungan[i] <- as.Date(data_kapitasi$FKL03[i])
+  }
+}
+tanggal_lahir <- data_kapitasi$PSTV03
+
+Umur <- interval(tanggal_lahir, tanggal_kunjungan) %/% years(1)
+umur_pasien <- data.frame(Peserta = data_kapitasi$PSTV01, Umur)
+
+umur_maxkapitasi <- umur_pasien %>%
+  group_by(Peserta) %>%
+  summarize(Umur_Min = min(Umur))
+
+#umur peserta nonkapitasi
+tgl_kunjungan <- data_nonkapitasi$PNK03
+tgl_lahir <- data_nonkapitasi$PSTV03
+
+Umurnon <- interval(tgl_lahir, tgl_kunjungan) %/% years(1)
+umur_pasiennon <- data.frame(Peserta = data_nonkapitasi$PSTV01, Umurnon)
+
+umur_maxnonkapitasi <- umur_pasiennon %>%
+  group_by(Peserta) %>%
+  summarize(Umur_Min = min(Umurnon))
+
+# umur
+Umur.Peserta <- rbind(umur_maxkapitasi, umur_maxnonkapitasi)
+Umur.Peserta 
+
+umur_peserta <- Umur.Peserta %>%
+  group_by(Peserta) %>%
+  summarize(Umur.Min = max(Umur_Min))
+umur_peserta
+```
+
+```{r}
+#Variabel faktor keturunan
+kap_distinct <- distinct(data_kapitasi,data_kapitasi$PSTV01, data_kapitasi$PSTV02)
+
+nonkap_distinct <- distinct(data_nonkapitasi,data_nonkapitasi$PSTV01, data_nonkapitasi$PSTV02)
+
+names(kap_distinct)[names(kap_distinct)=="data_kapitasi$PSTV01"]<-"PSTV01"
+names(kap_distinct)[names(kap_distinct)=="data_kapitasi$PSTV02"]<-"PSTV02"
+names(nonkap_distinct)[names(nonkap_distinct)=="data_nonkapitasi$PSTV01"]<-"PSTV01"
+names(nonkap_distinct)[names(nonkap_distinct)=="data_nonkapitasi$PSTV02"]<-"PSTV02"
+data_fix <-rbind(kap_distinct,nonkap_distinct)
+
+data_keturunan2 <- distinct(data_fix,PSTV01,PSTV02)
+keturunan.fix <- data_keturunan2 %>% group_by(PSTV02 = data_keturunan2$PSTV02) %>% summarise(Frekuensi = n())
+keturunan_fix <- arrange(keturunan.fix, desc(keturunan.fix$Frekuensi))
+
+# Mengubah variabel frekuensi menjadi variabel biner
+keturunan_fix$faktor_keturunan <-as.integer(keturunan_fix$Frekuensi != 1)
+faktor_keturunan <- inner_join(data_keturunan2, keturunan_fix, by = "PSTV02")
+faktor_keturunan
+```
+
+
+```{r}
+#penyakit katastropik lain
+#Mencari data penyakit katastropik lain selain gagal ginjal
+fkrtl.kode <- subset(fkrtl, fkrtl$FKL17A %in% c(
+  "I10"
+  ," I110 "
+  ," I119 "
+  ," I120 "
+  ," I129 "
+  ," I130 "
+  ," I131 "
+  ," I132 "
+  ," I139 "
+  ," I150 "
+  ," I151 "
+  ," I152 "
+  ," I158 "
+  ," I159 "
+  ," I200 "
+  ," I201 "
+  ," I208 "
+  ," I209 "
+  ," I210 "
+  ," I211 "
+  ," I212 "
+  ," I213 "
+  ," I214 "
+  ," I219 "
+  ," I220 "
+  ," I221 "
+  ," I228 "
+  ," I229 "
+  ," I240 "
+  ," I241 "
+  ," I248 "
+  ," I249 "
+  ," I250 "
+  ," I251 "
+  ," I252 "
+  ," I253 "
+  ," I254 "
+  ," I255 "
+  ," I256 "
+  ," I258 "
+  ," I259 "
+  ," I270 "
+  ," I271 "
+  ," I272 "
+  ," I278 "
+  ," I279 "
+  ," I300 "
+  ," I301 "
+  ," I308 "
+  ," I309 "
+  ," I310 "
+  ," I311 "
+  ," I312 "
+  ," I313 "
+  ," I318 "
+  ," I319 "
+  ," I320 "
+  ," I321 "
+  ," I328 "
+  ," I330 "
+  ," I339 "
+  ," I340 "
+  ," I341 "
+  ," I342 "
+  ," I348 "
+  ," I349 "
+  ," I350 "
+  ," I351 "
+  ," I352 "
+  ," I358 "
+  ," I359 "
+  ," I360 "
+  ," I361 "
+  ," I362 "
+  ," I368 "
+  ," I369 "
+  ," I400 "
+  ," I401 "
+  ," I408 "
+  ," I409 "
+  ," I410 "
+  ," I411 "
+  ," I412 "
+  ," I418 "
+  ," I420 "
+  ," I421 "
+  ," I422 "
+  ," I423 "
+  ," I424 "
+  ," I425 "
+  ," I426 "
+  ," I427 "
+  ," I428 "
+  ," I429 "
+  ," I430 "
+  ," I431 "
+  ," I432 "
+  ," I438 "
+  ," I48 "
+  ," I490 "
+  ," I491 "
+  ," I492 "
+  ," I493 "
+  ," I494 "
+  ," I495 "
+  ," I498 "
+  ," I499 "
+  ," I500 "
+  ," I501 "
+  ," I509 "
+  ," I520 "
+  ," I521 "
+  ," I528 "
+  ," I700 "
+  ," I701 "
+  ," I702 "
+  ," I708 "
+  ," I709 "
+  ," I100 "
+  ," I101 "
+  ," I109 "
+  ," D580 "
+  ," D581 "
+  ," D582 "
+  ," D588 "
+  ," D589 "
+  ," D590 "
+  ," D591 "
+  ," D592 "
+  ," D593 "
+  ," D594 "
+  ," D595 "
+  ," D596 "
+  ," D598 "
+  ," D599 "
+  ," D66 "
+  ," D67 "
+  ," D560 "
+  ," D561 "
+  ," D562 "
+  ," D563 "
+  ," D564 "
+  ," D568 "
+  ," D569 "
+  ," C910 "
+  ," C911 "
+  ," C912 "
+  ," C913 "
+  ," C914 "
+  ," C915 "
+  ," C917 "
+  ," C919 "
+  ," C920 "
+  ," C921 "
+  ," C922 "
+  ," C923 "
+  ," C924 "
+  ," C925 "
+  ," C927 "
+  ," C929 "
+  ," C930 "
+  ," C931 "
+  ," C932 "
+  ," C937 "
+  ," C939 "
+  ," C940 "
+  ," C941 "
+  ," C942 "
+  ," C943 "
+  ," C944 "
+  ," C945 "
+  ," C947 "
+  ," C950 "
+  ," C951 "
+  ," C952 "
+  ," C957 "
+  ," C959 "
+  ," C960 "
+  ," C961 "
+  ," C962 "
+  ," C963 "
+  ," C967 "
+  ," C969 "
+  ," C000 "
+  ," C001 "
+  ," C002 "
+  ," C003 "
+  ," C004 "
+  ," C005 "
+  ," C006 "
+  ," C008 "
+  ," C009 "
+  ," C01 "
+  ," C020 "
+  ," C021 "
+  ," C022 "
+  ," C023 "
+  ," C024 "
+  ," C028 "
+  ," C029 "
+  ," C030 "
+  ," C031 "
+  ," C039 "
+  ," C040 "
+  ," C041 "
+  ," C048 "
+  ," C049 "
+  ," C050 "
+  ," C051 "
+  ," C052 "
+  ," C058 "
+  ," C059 "
+  ," C060 "
+  ," C061 "
+  ," C062 "
+  ," C068 "
+  ," C069 "
+  ," C07 "
+  ," C080 "
+  ," C081 "
+  ," C088 "
+  ," C089 "
+  ," C090 "
+  ," C091 "
+  ," C098 "
+  ," C099 "
+  ," C100 "
+  ," C101 "
+  ," C102 "
+  ," C103 "
+  ," C104 "
+  ," C108 "
+  ," C109 "
+  ," C110 "
+  ," C111 "
+  ," C112 "
+  ," C113 "
+  ," C118 "
+  ," C119 "
+  ," C12 "
+  ," C130 "
+  ," C131 "
+  ," C132 "
+  ," C138 "
+  ," C139 "
+  ," C140 "
+  ," C141 "
+  ," C142 "
+  ," C148 "
+  ," C150 "
+  ," C151 "
+  ," C152 "
+  ," C153 "
+  ," C154 "
+  ," C155 "
+  ," C158 "
+  ," C159 "
+  ," C160 "
+  ," C161 "
+  ," C162 "
+  ," C163 "
+  ," C164 "
+  ," C165 "
+  ," C166 "
+  ," C168 "
+  ," C169 "
+  ," C170 "
+  ," C171 "
+  ," C172 "
+  ," C173 "
+  ," C178 "
+  ," C179 "
+  ," C180 "
+  ," C181 "
+  ," C182 "
+  ," C183 "
+  ," C184 "
+  ," C185 "
+  ," C186 "
+  ," C187 "
+  ," C188 "
+  ," C189 "
+  ," C19 "
+  ," C20 "
+  ," C210 "
+  ," C211 "
+  ," C212 "
+  ," C218 "
+  ," C220 "
+  ," C221 "
+  ," C222 "
+  ," C223 "
+  ," C224 "
+  ," C227 "
+  ," C229 "
+  ," C23 "
+  ," C240 "
+  ," C241 "
+  ," C248 "
+  ," C249 "
+  ," C250 "
+  ," C251 "
+  ," C252 "
+  ," C253 "
+  ," C254 "
+  ," C257 "
+  ," C258 "
+  ," C259 "
+  ," C260 "
+  ," C261 "
+  ," C268 "
+  ," C269 "
+  ," C300 "
+  ," C301 "
+  ," C310 "
+  ," C311 "
+  ," C312 "
+  ," C313 "
+  ," C318 "
+  ," C319 "
+  ," C320 "
+  ," C321 "
+  ," C322 "
+  ," C323 "
+  ," C328 "
+  ," C329 "
+  ," C33 "
+  ," C340 "
+  ," C341 "
+  ," C342 "
+  ," C343 "
+  ," C348 "
+  ," C349 "
+  ," C37 "
+  ," C380 "
+  ," C381 "
+  ," C382 "
+  ," C383 "
+  ," C384 "
+  ," C388 "
+  ," C390 "
+  ," C398 "
+  ," C399 "
+  ," C400 "
+  ," C401 "
+  ," C402 "
+  ," C403 "
+  ," C408 "
+  ," C409 "
+  ," C410 "
+  ," C411 "
+  ," C412 "
+  ," C413 "
+  ," C414 "
+  ," C418 "
+  ," C419 "
+  ," C430 "
+  ," C431 "
+  ," C432 "
+  ," C433 "
+  ," C434 "
+  ," C435 "
+  ," C436 "
+  ," C437 "
+  ," C438 "
+  ," C439 "
+  ," C440 "
+  ," C441 "
+  ," C442 "
+  ," C443 "
+  ," C444 "
+  ," C445 "
+  ," C446 "
+  ," C447 "
+  ," C448 "
+  ," C449 "
+  ," C470 "
+  ," C471 "
+  ," C472 "
+  ," C473 "
+  ," C474 "
+  ," C475 "
+  ," C476 "
+  ," C478 "
+  ," C479 "
+  ," C480 "
+  ," C481 "
+  ," C482 "
+  ," C488 "
+  ," C490 "
+  ," C491 "
+  ," C492 "
+  ," C493 "
+  ," C494 "
+  ," C495 "
+  ," C496 "
+  ," C498 "
+  ," C499 "
+  ," C500 "
+  ," C501 "
+  ," C502 "
+  ," C503 "
+  ," C504 "
+  ," C505 "
+  ," C506 "
+  ," C508 "
+  ," C509 "
+  ," C510 "
+  ," C511 "
+  ," C512 "
+  ," C518 "
+  ," C519 "
+  ," C52 "
+  ," C530 "
+  ," C531 "
+  ," C538 "
+  ," C539 "
+  ," C540 "
+  ," C541 "
+  ," C542 "
+  ," C543 "
+  ," C548 "
+  ," C549 "
+  ," C55 "
+  ," C56 "
+  ," C570 "
+  ," C571 "
+  ," C572 "
+  ," C573 "
+  ," C574 "
+  ," C577 "
+  ," C578 "
+  ," C579 "
+  ," C58 "
+  ," C600 "
+  ," C601 "
+  ," C602 "
+  ," C608 "
+  ," C609 "
+  ," C61 "
+  ," C620 "
+  ," C621 "
+  ," C629 "
+  ," C630 "
+  ," C631 "
+  ," C632 "
+  ," C637 "
+  ," C638 "
+  ," C639 "
+  ," C64 "
+  ," C65 "
+  ," C66 "
+  ," C670 "
+  ," C671 "
+  ," C672 "
+  ," C673 "
+  ," C674 "
+  ," C675 "
+  ," C676 "
+  ," C677 "
+  ," C678 "
+  ," C679 "
+  ," C680 "
+  ," C681 "
+  ," C688 "
+  ," C689 "
+  ," C690 "
+  ," C691 "
+  ," C692 "
+  ," C693 "
+  ," C694 "
+  ," C695 "
+  ," C696 "
+  ," C698 "
+  ," C699 "
+  ," C700 "
+  ," C701 "
+  ," C709 "
+  ," C710 "
+  ," C711 "
+  ," C712 "
+  ," C713 "
+  ," C714 "
+  ," C715 "
+  ," C716 "
+  ," C717 "
+  ," C718 "
+  ," C719 "
+  ," C720 "
+  ," C721 "
+  ," C722 "
+  ," C723 "
+  ," C724 "
+  ," C725 "
+  ," C728 "
+  ," C729 "
+  ," C73 "
+  ," C740 "
+  ," C741 "
+  ," C749 "
+  ," C750 "
+  ," C751 "
+  ," C752 "
+  ," C753 "
+  ," C754 "
+  ," C755 "
+  ," C758 "
+  ," C759 "
+  ," C760 "
+  ," C761 "
+  ," C762 "
+  ," C763 "
+  ," C764 "
+  ," C765 "
+  ," C767 "
+  ," C768 "
+  ," C770 "
+  ," C771 "
+  ," C772 "
+  ," C773 "
+  ," C774 "
+  ," C775 "
+  ," C778 "
+  ," C779 "
+  ," C780 "
+  ," C781 "
+  ," C782 "
+  ," C783 "
+  ," C784 "
+  ," C785 "
+  ," C786 "
+  ," C787 "
+  ," C788 "
+  ," C790 "
+  ," C791 "
+  ," C792 "
+  ," C793 "
+  ," C794 "
+  ," C795 "
+  ," C796 "
+  ," C797 "
+  ," C798 "
+  ," C80 "
+  ," C900 "
+  ," C901 "
+  ," C902 "
+  ," C97 "
+  ," D000 "
+  ," D001 "
+  ," D002 "
+  ," D010 "
+  ," D011 "
+  ," D012 "
+  ," D013 "
+  ," D014 "
+  ," D015 "
+  ," D017 "
+  ," D019 "
+  ," D020 "
+  ," D021 "
+  ," D022 "
+  ," D023 "
+  ," D024 "
+  ," D030 "
+  ," D031 "
+  ," D032 "
+  ," D033 "
+  ," D034 "
+  ," D035 "
+  ," D036 "
+  ," D037 "
+  ," D038 "
+  ," D039 "
+  ," D040 "
+  ," D041 "
+  ," D042 "
+  ," D043 "
+  ," D044 "
+  ," D045 "
+  ," D046 "
+  ," D047 "
+  ," D048 "
+  ," D049 "
+  ," D050 "
+  ," D051 "
+  ," D057 "
+  ," D059 "
+  ," D060 "
+  ," D061 "
+  ," D067 "
+  ," D069 "
+  ," D070 "
+  ," D071 "
+  ," D072 "
+  ," D073 "
+  ," D074 "
+  ," D075 "
+  ," D076 "
+  ," D090 "
+  ," D091 "
+  ," D092 "
+  ," D093 "
+  ," D097 "
+  ," D099 "
+  ," K720 "
+  ," K721 "
+  ," K729 "
+  ," K730 "
+  ," K731 "
+  ," K732 "
+  ," K738 "
+  ," K739 "
+  ," K740 "
+  ," K741 "
+  ," K742 "
+  ," K743 "
+  ," K744 "
+  ," K745 "
+  ," K746 "
+  ," I600 "
+  ," I601 "
+  ," I602 "
+  ," I603 "
+  ," I604 "
+  ," I605 "
+  ," I606 "
+  ," I607 "
+  ," I608 "
+  ," I609 "
+  ," I610 "
+  ," I611 "
+  ," I612 "
+  ," I613 "
+  ," I614 "
+  ," I615 "
+  ," I616 "
+  ," I618 "
+  ," I619 "
+  ," I630 "
+  ," I631 "
+  ," I632 "
+  ," I633 "
+  ," I634 "
+  ," I635 "
+  ," I636 "
+  ," I638 "
+  ," I639 "
+  ," I64 "))
+
+#membuat data kode peserta gagal ginjal yang juga punya penyakit lain 
+kodepenyakit <- left_join(data_fix, fkrtl.kode, by = "PSTV01", multiple = "all")
+
+kodepenyakit <- kodepenyakit %>% mutate(penyakit_lain=0)
+for (i in 1:nrow(kodepenyakit)) {
+  if (is.na(kodepenyakit$FKL17A[i])) {
+    kodepenyakit$penyakit_lain[i] <- 0
+  } else {
+    kodepenyakit$penyakit_lain[i] <- 1
+  }
+}
+faktor_penyakit <-distinct(kodepenyakit, PSTV01, penyakit_lain)
+```
+
+```{r}
+###variabel tak terpakai
+#variabel status meninggal
+data_l <- data_kapitasi[c(1,5)]
+data_n <- data_nonkapitasi[c(1,5)]
+data_death = rbind(data_l, data_n)
+data_death$PSTV17 <- as.numeric(data_death$PSTV17)
+
+data_death$Status.meninggal <- rep(NA, nrow(data_death))
+for (i in 1:nrow(data_death)) {
+  if (data_death$PSTV17[i] == 2) {
+    data_death$Status.meninggal[i] <- 1
+  } else {
+    data_death$Status.meninggal[i] <- 0
+  }
+}
+
+data.death <- data_death %>%
+  group_by(PSTV01) %>%
+  summarize(death_state = max(Status.meninggal))
+```
+
+
+```{r}
+#variabel jenis kelamin
+data_k <- data_kapitasi[c(1,4)]
+data_nk <- data_nonkapitasi[c(1,4)]
+data_sex = rbind(data_k, data_nk)
+
+library(dplyr)
+data.sex <- distinct(data_sex, PSTV01, PSTV05)
+```
+
+```{r}
+ranap <-subset(fkrtl.filtered, fkrtl.filtered$FKL23 %in% c(2,3,4))
+ranap_nonkap <- subset(nonkap.filtered, nonkap.filtered$PNK10 %in% 4)
+
+frekuensiranap <- table(ranap$PSTV01)
+datafrekuensi <- data.frame(
+  PSTV01 = as.numeric(names(frekuensiranap)),
+  Frekuensi = as.numeric(frekuensiranap)
+)
+datafrekuensi$Frekuensi <- as.integer(datafrekuensi$Frekuensi)
+
+frekuensiranap_nonkap <- table(ranap_nonkap$PSTV01)
+datafrekuensinonkap <- data.frame(
+  PSTV01 = as.numeric(names(frekuensiranap_nonkap)),
+  Frekuensi = as.numeric(frekuensiranap_nonkap)
+)
+datafrekuensinonkap$Frekuensi <- as.integer(datafrekuensinonkap$Frekuensi)
+
+dataranap <- rbind(datafrekuensi, datafrekuensinonkap, by = "PSTV01", multiple = "all")
+dataranap <- dataranap[-c(1870, 1871), ]
+dataranap$Frekuensi <- as.integer(dataranap$Frekuensi)
+
+data.ranap <- dataranap %>%
+  group_by(PSTV01) %>%
+  summarize(Frekuensi = sum(Frekuensi))
+
+var.ranap <- data.frame(PSTV01 = as.character(dataprediksi$Peserta))
+join.ranap <- left_join(var.ranap, data.ranap, by = "PSTV01", multiple = "all") 
+join.ranap
+
+for (i in 1:nrow(join.ranap)) {
+  if(is.na(join.ranap$Frekuensi[i])){
+    join.ranap$Frekuensi[i] <- 0
+  }
+}
+join.ranap
+```
+
+
+```{r}
+#data frame yang digunakan untuk model
+dataprediksi <- inner_join(umur_peserta, frek, by = "Peserta")
+library(dplyr)
+dataprediksi <- dataprediksi %>%
+  mutate(fams = faktor_keturunan$faktor_keturunan, 
+         ill = faktor_penyakit$penyakit_lain, 
+         death = data.death$death_state,
+         sex = data.sex$PSTV05,
+         ranap = join.ranap$Frekuensi)
+dataprediksi
+
+names(dataprediksi)[names(dataprediksi)=="Umur.Min"] <- "Umur"
+dataprediksi$fams <- as.factor(dataprediksi$fams)
+dataprediksi$ill <- as.factor(dataprediksi$ill)
+dataprediksi$death <- as.factor(dataprediksi$death)
+dataprediksi$sex <- as.factor(dataprediksi$sex)
+
+
+summary(dataprediksi)
+str(dataprediksi)
+write.csv(dataprediksi, file = "DataPrediksinew.csv", row.names = FALSE)
+```
+
+```{r}
+model_pois <- glm(Frekuensi ~ Umur + sex + fams + ill + ranap + Umur*sex + Umur*fams + Umur*ill + Umur*ranap +sex*fams + sex*ill + sex*ranap + fams*ill + fams*ranap + ill*ranap, data = dataprediksi, family = "poisson") 
+summary(model_pois)
+deviance(model_pois)
+```
+
+```{r}
+dispersiontest(model_pois)
+```
+
+```{r}
+model_nb1 <- glm.nb(Frekuensi ~ Umur + sex + fams + ill + ranap + Umur*sex + Umur*fams + Umur*ill + Umur*ranap +sex*fams + sex*ill + sex*ranap + fams*ill + fams*ranap + ill*ranap, data = dataprediksi) 
+summary(model_nb1)
+```
+```{r}
+model_nb2 <- glm.nb(Frekuensi ~ Umur + sex + fams + ill + ranap + Umur*sex + Umur*ill + Umur*ranap +sex*fams + sex*ill + sex*ranap + fams*ill + fams*ranap + ill*ranap, data = dataprediksi) 
+summary(model_nb2)
+```
+
+```{r}
+model_nb2 <- glm.nb(Frekuensi ~ Umur + sex + fams + ill + ranap + Umur*sex + Umur*ill + Umur*ranap +sex*fams + sex*ill + fams*ill + fams*ranap + ill*ranap, data = dataprediksi) 
+summary(model_nb2)
+```
+
+```{r}
+model_nb2 <- glm.nb(Frekuensi ~ Umur + sex + fams + ill + ranap + Umur*sex + Umur*ill + Umur*ranap + sex*ill + fams*ill + fams*ranap + ill*ranap, data = dataprediksi) 
+summary(model_nb2)
+```
+
+```{r}
+model_nb2 <- glm.nb(Frekuensi ~ Umur + sex + fams + ill + ranap + Umur*sex + Umur*ill + Umur*ranap + sex*ill + fams*ill + ill*ranap, data = dataprediksi) 
+summary(model_nb2)
+```
+
+```{r}
+model_nb2 <- glm.nb(Frekuensi ~ Umur + sex + fams + ill + ranap + Umur*sex + Umur*ill + Umur*ranap + sex*ill + ill*ranap, data = dataprediksi) 
+summary(model_nb2)
+```
+
+```{r}
+model_nb2 <- glm.nb(Frekuensi ~ Umur + sex + fams + ill + ranap + Umur*sex + Umur*ill + Umur*ranap + sex*ill, data = dataprediksi) 
+summary(model_nb2)
+```
