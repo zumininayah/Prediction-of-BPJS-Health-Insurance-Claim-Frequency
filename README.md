@@ -1,1 +1,6 @@
-# Prediction-of-BPJS-Health-Insurance-Claim-Frequency
+# Prediction of BPJS Health Insurance Claim Frequency Based on Severity of Kidney Failure Using Generalized Linear Model (GLM)
+This project aimed to build a predictive model for the frequency of BPJS (Indonesia's National Health Insurance) claims based on the severity of kidney failure in patients. The dataset was provided by BPJS and included records from 2015 to 2020 for participants diagnosed with kidney failure (ICD-10 codes N17, N18, N19). Predictor variables included age, gender, comorbid catastrophic diseases, family history, and frequency of hospitalization.
+
+We initially applied the Poisson regression model, but the analysis indicated overdispersion (variance greater than the mean), making the Poisson model unfit. Therefore, we applied the Negative Binomial regression model, which better accounted for overdispersion. Through model refinement, we performed multiple iterations until we obtained a final model where all predictor variables and their interactions significantly influenced the outcome.
+
+The final model showed that variables such as age, gender, comorbidities, hospitalization frequency, and several interactions had significant effects on the frequency of BPJS claims. This model can help improve budgeting and policy planning in the health sector, particularly for chronic and high-cost diseases like kidney failure.
